@@ -1,91 +1,122 @@
+from tkinter import Tk, Frame, Scrollbar, Label, END, Entry, Text, VERTICAL, Button, messagebox
 import socket
 import threading
-import tkinter
-import tkinter.scrolledtext
-from tkinter import simpledialog
-
-HOST = '127.0.0.1'
-PORT = 9090
 
 
-class Client:
+class GUI:
+    client_socket = None
+    last_received_message = None
 
-    def __int__(self, host, port):
+    def __init__(self, master):
+        self.root = master
+        self.chat_transcript_area = None
+        self.name_widget = None
+        self.enter_text_widget = None
+        self.join_button = None
+        self.initialize_socket()
+        self.initialize_gui()
+        self.listen_for_incoming_messages_in_a_thread()
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((host, port))
+    def initialize_socket(self):
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        remote_ip = '127.0.0.1'
+        remote_port = 10319
+        self.client_socket.connect((remote_ip, remote_port))
 
-        msg = tkinter.Tk()
-        msg.withdraw()
+    def initialize_gui(self):
+        self.root.title("Socket Chat")
+        self.root.resizable(0, 0)
+        self.display_chat_box()
+        self.display_name_section()
+        self.display_chat_entry_box()
 
-        self.nickname = simpledialog.askstring("Nickname", "Please choose a nickname", parent=msg)
+    def listen_for_incoming_messages_in_a_thread(self):
+        thread = threading.Thread(target=self.receive_message_from_server,
+                                  args=(self.client_socket,))
+        thread.start()
 
-        self.gui_done = False
-        self.running = True
-
-        gui_thread = threading.Thread(target=self.gui_loop)
-        recieve_thread = threading.Thread(target=self.recieve)
-
-        gui_thread.start()
-        recieve_thread.start()
-
-    def gui_loop(self):
-        self.win = tkinter.Tk()
-        self.win.configure(bg='lightgrey')
-
-        self.chat_label = tkinter.Label(self.win, text='Chat', bg='lightgrey')
-        self.chat_label.config(font=("Ariel", 12))
-        self.chat_label.pack(padx=20, pady=5)
-
-        self.text_area = tkinter.scrolledtext.ScrolledText
-        self.text_area.pack(padx=20, pady=5)
-        self.text_area.config(state='disabled')
-
-        self.msg_label = tkinter.Label(self.win, text='Chat', bg='lightgrey')
-        self.msg_label.config(font=("Ariel", 12))
-        self.msg_label.pack(padx=20, pady=5)
-
-        self.input_area = tkinter.Text(self.win, height=3)
-        self.input_area.pack(padx=20, pady=5)
-
-        self.send_button = tkinter.Button(self.win, text='Send', command=self.write)
-        self.send_button.config(font=("Arial", 12))
-        self.send_button.pack(padx=20, pady=5)
-
-        self.gui_done = True
-
-        self.win.protocol("WM_DELETE_WINDOW", self.stop)
-
-        self.winmainloop()
-
-    def write(self):
-        message = f"{self.nickname} : {self.input_area.get('1.0', 'end')}"
-        self.sock.send(message.encode('utf-8'))
-        self.input_area.delete('1.0', 'end')
-
-    def stop(self):
-        self.running = False
-        self.win.destroy()
-        self.sock.close()
-        exit(0)
-
-    def recieve(self):
-        while self.running:
-            try:
-                message = self.sock.recv(1024)
-                if message == 'NICK':
-                    self.sock.send(self.nickname.encode('utf-8'))
-                else:
-                    if self.gui_done:
-                        self.text_area.config(state='normal')
-                        self.text_area.insert('end', message)
-                        self.text_area.yview('end')
-                        self.text_area.config(state='disabled')
-            except ConnectionAbortedError:
+    def receive_message_from_server(self, so):
+        while True:
+            buffer = so.recv(256)
+            if not buffer:
                 break
-            except:
-                print("Error")
-                self.sock.close()
-                break
+            message = buffer.decode('utf-8')
 
-client = Client(HOST,PORT)
+            if "joined" in message:
+                user = message.split(":")[1]
+                message = user + " has joined"
+                self.chat_transcript_area.insert('end', message + '\n')
+                self.chat_transcript_area.yview(END)
+            else:
+                self.chat_transcript_area.insert('end', message + '\n')
+                self.chat_transcript_area.yview(END)
+
+        so.close()
+
+    def display_name_section(self):
+        frame = Frame()
+        Label(frame, text='Enter your name:', font=("Helvetica", 16)).pack(side='left', padx=10)
+        self.name_widget = Entry(frame, width=50, borderwidth=2)
+        self.name_widget.pack(side='left', anchor='e')
+        self.join_button = Button(frame, text="Join", width=10, command=self.on_join).pack(side='left')
+        frame.pack(side='top', anchor='nw')
+
+    def display_chat_box(self):
+        frame = Frame()
+        Label(frame, text='Chat Box:', font=("Serif", 12)).pack(side='top', anchor='w')
+        self.chat_transcript_area = Text(frame, width=60, height=10, font=("Serif", 12))
+        scrollbar = Scrollbar(frame, command=self.chat_transcript_area.yview, orient=VERTICAL)
+        self.chat_transcript_area.config(yscrollcommand=scrollbar.set)
+        self.chat_transcript_area.bind('<KeyPress>', lambda e: 'break')
+        self.chat_transcript_area.pack(side='left', padx=10)
+        scrollbar.pack(side='right', fill='y')
+        frame.pack(side='top')
+
+    def display_chat_entry_box(self):
+        frame = Frame()
+        Label(frame, text='Enter message:', font=("Serif", 12)).pack(side='top', anchor='w')
+        self.enter_text_widget = Text(frame, width=60, height=3, font=("Serif", 12))
+        self.enter_text_widget.pack(side='left', pady=15)
+        self.enter_text_widget.bind('<Return>', self.on_enter_key_pressed)
+        frame.pack(side='top')
+
+    def on_join(self):
+        if len(self.name_widget.get()) == 0:
+            messagebox.showerror(
+                "Enter your name", "Enter your name to send a message")
+            return
+        self.name_widget.config(state='disabled')
+        self.client_socket.send(("joined:" + self.name_widget.get()).encode('utf-8'))
+
+    def on_enter_key_pressed(self, event):
+        if len(self.name_widget.get()) == 0:
+            messagebox.showerror("Enter your name", "Enter your name to send a message")
+            return
+        self.send_chat()
+        self.clear_text()
+
+    def clear_text(self):
+        self.enter_text_widget.delete(1.0, 'end')
+
+    def send_chat(self):
+        senders_name = self.name_widget.get().strip() + ": "
+        data = self.enter_text_widget.get(1.0, 'end').strip()
+        message = (senders_name + data).encode('utf-8')
+        self.chat_transcript_area.insert('end', message.decode('utf-8') + '\n')
+        self.chat_transcript_area.yview(END)
+        self.client_socket.send(message)
+        self.enter_text_widget.delete(1.0, 'end')
+        return 'break'
+
+    def on_close_window(self):
+        if messagebox.askokcancel("Quit", "Do you want to quit?"):
+            self.root.destroy()
+            self.client_socket.close()
+            exit(0)
+
+
+if __name__ == '__main__':
+    root = Tk()
+    gui = GUI(root)
+    root.protocol("WM_DELETE_WINDOW", gui.on_close_window)
+    root.mainloop()
