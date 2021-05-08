@@ -8,5 +8,8 @@ RUN pip install tkinter socket threading
 
 CMD ['python',"./server.py"]
 
+#launching gui clients for chatting
+CMD ['python',"./client.py"]
+
 CMD ['python',"./client.py"]
 

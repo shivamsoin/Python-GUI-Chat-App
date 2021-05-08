@@ -13,8 +13,7 @@ class ChatServer:
 
     def create_listening_server(self):
 
-        self.server_socket = socket.socket(socket.AF_INET,
-                                           socket.SOCK_STREAM)
+        self.server_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         local_ip = '127.0.0.1'
         local_port = 10319
 
